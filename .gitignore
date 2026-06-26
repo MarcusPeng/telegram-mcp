@@ -183,6 +183,12 @@ anon_new.session-journal
 *.session.sql
 *.session.sql-journal
 
+# HTTP multi-user mode: SQLite DB holding encrypted linked-account credentials
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
 # Claude Desktop config
 claude_desktop_config.json
 .DS_Store
