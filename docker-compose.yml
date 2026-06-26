@@ -18,3 +18,25 @@ services:
     # volumes:
     #   - ./telegram_sessions:/app
     restart: unless-stopped
+
+  # Multi-user OAuth+HTTP mode. Opt into this with: docker compose --profile http up
+  # The default `telegram-mcp` service above is unaffected and still runs stdio mode.
+  telegram-mcp-http:
+    profiles: ["http"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: telegram-mcp-http
+    env_file:
+      - .env
+    environment:
+      - TELEGRAM_MCP_TRANSPORT=http
+      - TELEGRAM_MCP_DB_PATH=/app/data/telegram_mcp.db
+      # Set these in .env (not hardcoded here): TELEGRAM_MCP_PUBLIC_URL,
+      # TELEGRAM_MCP_MASTER_KEY (openssl rand -base64 32).
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persists linked Telegram accounts + OAuth state across restarts.
+      - ./data:/app/data
+    restart: unless-stopped

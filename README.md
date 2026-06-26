@@ -31,6 +31,7 @@ Message sent successfully:
 - [MCP Client Configuration](#mcp-client-configuration)
 - [Multi-Account Setup](#multi-account-setup)
 - [Device Identity](#device-identity)
+- [Multi-User HTTP Mode (OAuth)](#multi-user-http-mode-oauth)
 - [Proxy Support](#proxy-support)
 - [File Path Security](#file-path-security)
 - [Docker](#docker)
@@ -241,6 +242,56 @@ set them to keep a stable, recognisable device name. The same variables are
 read both by the session string generator (at login) and by the server (on
 every connect), so set them in the same place as your other credentials.
 
+## Multi-User HTTP Mode (OAuth)
+
+By default the server runs over stdio for one operator (the setup above).
+Set `TELEGRAM_MCP_TRANSPORT=http` to instead run a **multi-user, OAuth-protected,
+streamable-HTTP** server that multiple distinct people can connect to — useful
+for self-hosting this for a team rather than just your own Claude Desktop.
+
+Telegram itself has no OAuth login for user accounts (only QR-code or
+phone+code, optionally with a 2FA password), so in this mode **a successful
+Telegram login is the OAuth login**: there's no separate username/password
+account system. Each user brings their own `api_id`/`api_hash` from
+[my.telegram.org/apps](https://my.telegram.org/apps) and links their account
+through a browser-based QR or phone+code(+2FA) flow; once that succeeds, an
+MCP access token is issued scoped to that specific Telegram identity. This
+server acts as its own self-contained OAuth 2.1 Authorization Server
+(PKCE + Dynamic Client Registration), so standard MCP clients (Claude.ai
+connectors, Claude Desktop, etc.) can connect directly — no third-party
+identity provider required.
+
+```env
+TELEGRAM_MCP_TRANSPORT=http
+TELEGRAM_MCP_PUBLIC_URL=https://telegram-mcp.example.com
+TELEGRAM_MCP_MASTER_KEY=<base64 32-byte key, e.g. `openssl rand -base64 32`>
+# Optional:
+# TELEGRAM_MCP_HTTP_PORT=8000
+# TELEGRAM_MCP_DB_PATH=./telegram_mcp.db
+# TELEGRAM_MCP_CLIENT_IDLE_SECONDS=900
+```
+
+`TELEGRAM_API_ID`/`TELEGRAM_API_HASH` and `TELEGRAM_SESSION_STRING*` are
+ignored in this mode — they're stdio-only.
+
+Linked accounts and OAuth state live in a local SQLite database
+(`TELEGRAM_MCP_DB_PATH`). Telegram session strings and each user's
+`api_id`/`api_hash` are encrypted at rest with `TELEGRAM_MCP_MASTER_KEY`
+(AES-256-GCM). **Losing this key makes every linked account permanently
+unreadable** — there is no key rotation in this version, so back it up
+somewhere safe. This server should sit behind a TLS-terminating reverse proxy
+(Caddy/nginx/Traefik); it only serves plain HTTP itself, and
+`TELEGRAM_MCP_PUBLIC_URL` must be the externally reachable `https://` address
+(except for local development against `localhost`/`127.0.0.1`).
+
+Run it directly with `TELEGRAM_MCP_TRANSPORT=http uv run main.py`, or via
+Docker Compose with the `http` profile (see [Docker](#docker) below).
+
+File-path tools (`send_file`, `download_media`, etc.) share one
+process-global root directory across *all* users in this mode — they stay
+disabled unless you explicitly configure server-side allowed roots, and
+even then, treat that directory as shared, not per-user.
+
 ## Proxy Support
 
 Route Telegram traffic through a proxy by setting the `TELEGRAM_PROXY_*`
@@ -373,6 +424,17 @@ docker run -it --rm \
 
 For multiple accounts, pass variables such as `TELEGRAM_SESSION_STRING_WORK` and `TELEGRAM_SESSION_STRING_PERSONAL`.
 
+To instead run [multi-user HTTP mode](#multi-user-http-mode-oauth), use the `http`
+Compose profile (the default `telegram-mcp` stdio service is unaffected):
+
+```bash
+docker compose --profile http up --build telegram-mcp-http
+```
+
+Set `TELEGRAM_MCP_PUBLIC_URL` and `TELEGRAM_MCP_MASTER_KEY` in `.env` first; the
+`./data` directory is mounted into the container so linked accounts and OAuth
+state survive restarts.
+
 ## Development
 
 The implementation is split into a small compatibility entrypoint and modular package code:
@@ -423,6 +485,12 @@ uv run flake8 .
   If `TELEGRAM_PROXY_*` is configured, Telegram traffic is routed through the
   configured SOCKS/HTTP/MTProxy proxy instead.
 - User-generated Telegram content is sanitized before being returned to MCP clients.
+- In [multi-user HTTP mode](#multi-user-http-mode-oauth): linked sessions and
+  credentials are encrypted at rest, but a compromise of the running server
+  process itself (not just the database file) can still expose them, the same
+  trust boundary as the single-user stdio server, just shared across more
+  accounts. Put TLS in front of it. Back up `TELEGRAM_MCP_MASTER_KEY` somewhere
+  safe — there is no recovery if it's lost, and no rotation in this version.
 
 ### Prompt Injection Protection
 

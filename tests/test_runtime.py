@@ -293,6 +293,43 @@ def test_get_client_single_and_multi_account_paths(monkeypatch):
         runtime.get_client("missing")
 
 
+def test_active_clients_http_mode_resolves_via_pool(monkeypatch):
+    monkeypatch.setattr(runtime, "_HTTP_MULTIUSER_MODE", True)
+    fake_client = object()
+
+    class _FakeAccessToken:
+        telegram_user_id = 4242
+
+    class _FakePool:
+        def get_or_create(self, telegram_user_id):
+            assert telegram_user_id == 4242
+            return fake_client
+
+    import mcp.server.auth.middleware.auth_context as auth_context_module
+
+    monkeypatch.setattr(auth_context_module, "get_access_token", lambda: _FakeAccessToken())
+
+    import telegram_mcp.multiuser.client_pool as client_pool_module
+
+    monkeypatch.setattr(client_pool_module, "get_pool", lambda: _FakePool())
+
+    assert runtime._active_clients() == {"default": fake_client}
+    assert runtime.get_client() is fake_client
+    assert runtime.is_multi_mode() is False
+
+
+def test_active_clients_http_mode_without_token_is_empty(monkeypatch):
+    monkeypatch.setattr(runtime, "_HTTP_MULTIUSER_MODE", True)
+
+    import mcp.server.auth.middleware.auth_context as auth_context_module
+
+    monkeypatch.setattr(auth_context_module, "get_access_token", lambda: None)
+
+    assert runtime._active_clients() == {}
+    with pytest.raises(ValueError, match="Account is required"):
+        runtime.get_client()
+
+
 @pytest.mark.asyncio
 async def test_with_account_routes_single_multi_and_readonly(monkeypatch):
     async def tool(account=None):

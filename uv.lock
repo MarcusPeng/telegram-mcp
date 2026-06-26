@@ -1327,10 +1327,13 @@ name = "telegram-mcp"
 version = "2.0.1"
 source = { editable = "." }
 dependencies = [
+    { name = "cryptography", version = "45.0.7", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.14' or platform_python_implementation == 'PyPy'" },
+    { name = "cryptography", version = "46.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.14' and platform_python_implementation != 'PyPy'" },
     { name = "dotenv" },
     { name = "httpx" },
     { name = "mcp", extra = ["cli"] },
     { name = "nest-asyncio" },
+    { name = "pyjwt" },
     { name = "python-dotenv" },
     { name = "python-json-logger" },
     { name = "qrcode" },
@@ -1354,10 +1357,12 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography", specifier = ">=42.0.0" },
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.8.0" },
     { name = "nest-asyncio", specifier = ">=1.6.0" },
+    { name = "pyjwt", specifier = ">=2.9.0" },
     { name = "python-dotenv", specifier = ">=1.1.0" },
     { name = "python-json-logger", specifier = ">=3.3.0" },
     { name = "python-socks", marker = "extra == 'proxy'", specifier = ">=2.4.3" },

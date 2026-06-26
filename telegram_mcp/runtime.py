@@ -100,10 +100,35 @@ def get_entity_filter_type(entity: Any) -> Optional[str]:
 
 load_dotenv()
 
-TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
-TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
+# Selects between the default single-operator stdio server (env-var driven,
+# unchanged) and the multi-user HTTP+OAuth server (telegram_mcp/multiuser/).
+# Must be resolved before `mcp = FastMCP(...)` below, since the auth
+# provider/settings can only be passed in at construction time.
+_HTTP_MULTIUSER_MODE = os.getenv("TELEGRAM_MCP_TRANSPORT", "stdio").strip().lower() == "http"
 
-mcp = FastMCP("telegram")
+if _HTTP_MULTIUSER_MODE:
+    # Each linked Telegram principal brings their own api_id/api_hash (see
+    # telegram_mcp/multiuser/web/telegram_login.py) -- the global credentials
+    # below are stdio-mode-only and intentionally left unset here.
+    TELEGRAM_API_ID = None
+    TELEGRAM_API_HASH = None
+else:
+    TELEGRAM_API_ID = int(os.getenv("TELEGRAM_API_ID"))
+    TELEGRAM_API_HASH = os.getenv("TELEGRAM_API_HASH")
+
+if _HTTP_MULTIUSER_MODE:
+    from telegram_mcp.multiuser.oauth_provider import TelegramOAuthProvider
+    from telegram_mcp.multiuser.settings import build_auth_settings
+
+    mcp = FastMCP(
+        "telegram",
+        auth_server_provider=TelegramOAuthProvider(),
+        auth=build_auth_settings(),
+        host="0.0.0.0",
+        port=int(os.getenv("TELEGRAM_MCP_HTTP_PORT", "8000")),
+    )
+else:
+    mcp = FastMCP("telegram")
 
 # Annotate all tool results with audience=["user"] so MCP clients know
 # the content is user-generated data, not instructions for the model.
@@ -324,26 +349,55 @@ def _discover_accounts() -> dict[str, TelegramClient]:
     return accounts
 
 
-clients: dict[str, TelegramClient] = _discover_accounts()
+if _HTTP_MULTIUSER_MODE:
+    # Real per-user clients live in telegram_mcp.multiuser.client_pool,
+    # resolved per-request by _active_clients() below. This dict is an
+    # unused placeholder so existing references to the module-level
+    # `clients` name (e.g. in tests) don't need a separate code path.
+    clients: dict[str, TelegramClient] = {}
+else:
+    clients: dict[str, TelegramClient] = _discover_accounts()
+
+
+def _active_clients() -> dict[str, TelegramClient]:
+    """The account-label -> TelegramClient map for the current call.
+
+    stdio mode: the global ``clients`` dict, unchanged. HTTP multi-user
+    mode: a single-entry ``{"default": <this caller's pooled client>}``
+    dict, resolved from the OAuth access token bound to the current
+    request -- so every existing single-account code path below (the
+    ``len(active) == 1`` shortcuts in particular) runs unmodified.
+    """
+    if not _HTTP_MULTIUSER_MODE:
+        return clients
+
+    from mcp.server.auth.middleware.auth_context import get_access_token
+    from telegram_mcp.multiuser import client_pool
+
+    access_token = get_access_token()
+    if access_token is None:
+        return {}
+    return {"default": client_pool.get_pool().get_or_create(access_token.telegram_user_id)}
 
 
 def get_client(account: str = None) -> TelegramClient:
     """Resolve account label to TelegramClient."""
+    active = _active_clients()
     if account is None:
-        if len(clients) == 1:
-            return next(iter(clients.values()))
-        raise ValueError(f"Account is required. Available accounts: {', '.join(clients.keys())}")
+        if len(active) == 1:
+            return next(iter(active.values()))
+        raise ValueError(f"Account is required. Available accounts: {', '.join(active.keys())}")
     label = account.lower()
-    if label not in clients:
+    if label not in active:
         raise ValueError(
-            f"Unknown account '{account}'. Available accounts: {', '.join(clients.keys())}"
+            f"Unknown account '{account}'. Available accounts: {', '.join(active.keys())}"
         )
-    return clients[label]
+    return active[label]
 
 
 def is_multi_mode() -> bool:
     """Return True when more than one account is configured."""
-    return len(clients) > 1
+    return len(_active_clients()) > 1
 
 
 def with_account(readonly=False):
@@ -369,8 +423,9 @@ def with_account(readonly=False):
                 return await fn(*args, **kwargs)
 
             # account is None AND multi-mode
+            active = _active_clients()
             if not readonly:
-                labels = ", ".join(clients.keys())
+                labels = ", ".join(active.keys())
                 return f"Error: 'account' is required. Available accounts: {labels}"
 
             # Read-only fan-out to all accounts concurrently
@@ -379,7 +434,7 @@ def with_account(readonly=False):
                 kw["account"] = label
                 return label, await fn(*args, **kw)
 
-            results = await asyncio.gather(*(_call_for(label) for label in clients))
+            results = await asyncio.gather(*(_call_for(label) for label in active))
             return "\n\n".join(f"[{label}]\n{result}" for label, result in results)
 
         return wrapper

@@ -11,6 +11,9 @@ from telegram_mcp import runtime as _runtime
 from telegram_mcp.runtime import *
 import telegram_mcp.tools  # noqa: F401 - registers MCP tools via decorators
 
+if _runtime._HTTP_MULTIUSER_MODE:
+    import telegram_mcp.multiuser.web  # noqa: F401 - registers @mcp.custom_route() handlers
+
 
 async def _connect_authorized_client(label, client) -> None:
     await client.connect()
@@ -26,7 +29,7 @@ async def _connect_authorized_client(label, client) -> None:
     )
 
 
-async def _main() -> None:
+async def _main_stdio() -> None:
     try:
         labels = ", ".join(clients.keys())
         print(f"Starting {len(clients)} Telegram client(s) ({labels})...", file=sys.stderr)
@@ -68,6 +71,32 @@ async def _main() -> None:
             )
         except Exception:
             pass
+
+
+async def _main_http() -> None:
+    from telegram_mcp.multiuser import db
+    from telegram_mcp.multiuser.client_pool import get_pool
+
+    db.init_schema(db.get_connection())
+    pool = get_pool()
+    evict_task = asyncio.create_task(pool.run_idle_eviction_loop())
+
+    print("Running Telegram MCP server in HTTP multi-user mode...", file=sys.stderr)
+    try:
+        # No eager "connect every client" step here, unlike stdio mode:
+        # HTTP-mode clients are per-principal and created lazily by
+        # client_pool.get_or_create() on first tool call.
+        await mcp.run_streamable_http_async()
+    finally:
+        evict_task.cancel()
+        await pool.disconnect_all()
+
+
+async def _main() -> None:
+    if _runtime._HTTP_MULTIUSER_MODE:
+        await _main_http()
+    else:
+        await _main_stdio()
 
 
 def main() -> None:

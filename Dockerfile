@@ -41,8 +41,14 @@ ENV TELEGRAM_SESSION_NAME="telegram_mcp_session"
 # Or provide the session string directly
 ENV TELEGRAM_SESSION_STRING=""
 
-# Expose any ports if the application were a web server (not needed for stdio MCP)
-# EXPOSE 8000
+# Default transport is stdio (above). To instead run the multi-user
+# OAuth+HTTP server, set TELEGRAM_MCP_TRANSPORT=http plus
+# TELEGRAM_MCP_PUBLIC_URL / TELEGRAM_MCP_MASTER_KEY at runtime, and mount a
+# volume for TELEGRAM_MCP_DB_PATH so linked accounts survive restarts.
+# ENV TELEGRAM_MCP_TRANSPORT="http"
+
+# Only meaningful in HTTP mode (harmless otherwise, since stdio doesn't listen on a port).
+EXPOSE 8000
 
 # Define the command to run the application
 CMD ["python", "main.py"]

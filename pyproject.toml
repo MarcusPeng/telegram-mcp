@@ -23,10 +23,12 @@ classifiers = [
 ]
 requires-python = ">=3.10"
 dependencies = [
+    "cryptography>=42.0.0",
     "dotenv>=0.9.9",
     "httpx>=0.28.1",
     "mcp[cli]>=1.8.0",
     "nest-asyncio>=1.6.0",
+    "pyjwt>=2.9.0",
     "python-dotenv>=1.1.0",
     "python-json-logger>=3.3.0",
     "qrcode>=8.2",
@@ -45,7 +47,7 @@ proxy = [
 
 [tool.setuptools]
 py-modules = ["main", "sanitize", "session_string_generator"]
-packages = ["telegram_mcp", "telegram_mcp.tools"]
+packages = ["telegram_mcp", "telegram_mcp.tools", "telegram_mcp.multiuser", "telegram_mcp.multiuser.web"]
 
 [project.scripts]
 telegram-mcp = "main:main"
