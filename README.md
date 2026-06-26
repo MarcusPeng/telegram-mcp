@@ -344,6 +344,11 @@ missing MTProxy secret, or a missing `python-socks` package) cause the server
 to fail fast at startup with a clear error message instead of silently
 bypassing the proxy.
 
+In [multi-user HTTP mode](#multi-user-http-mode-oauth), only the unsuffixed
+`TELEGRAM_PROXY_*` variables apply -- there are no account labels to scope a
+`_<LABEL>` override to, so the proxy (if configured) routes every linked
+user's traffic, plus the QR/phone login flow itself.
+
 ## File Path Security
 
 File-path tools are disabled until allowed roots are configured. This affects tools such as `send_file`, `download_media`, `upload_file`, `send_voice`, `send_sticker`, `set_profile_photo`, and `edit_chat_photo`.

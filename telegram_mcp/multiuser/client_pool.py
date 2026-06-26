@@ -15,8 +15,25 @@ from typing import Dict, Optional
 from telethon import TelegramClient
 from telethon.sessions import StringSession
 
+from telegram_mcp import runtime as _runtime
 from telegram_mcp.client_identity import client_identity_kwargs
 from telegram_mcp.multiuser import db, principals
+
+
+def _proxy_kwargs() -> Dict[str, object]:
+    """Global (unsuffixed) TELEGRAM_PROXY_* config, applied to every user.
+
+    HTTP multi-user mode has no per-account labels to override the proxy
+    per-user with -- a proxy here is an operator/network-level setting (e.g.
+    Telegram is blocked from this server's network), so it applies uniformly.
+    """
+    proxy, connection = _runtime._build_proxy_for_label(None)
+    kwargs: Dict[str, object] = {}
+    if proxy is not None:
+        kwargs["proxy"] = proxy
+    if connection is not None:
+        kwargs["connection"] = connection
+    return kwargs
 
 
 class ClientPool:
@@ -44,6 +61,7 @@ class ClientPool:
                 principal.api_id,
                 principal.api_hash,
                 **client_identity_kwargs(),
+                **_proxy_kwargs(),
             )
             self._clients[telegram_user_id] = client
         self._last_used[telegram_user_id] = time.time()

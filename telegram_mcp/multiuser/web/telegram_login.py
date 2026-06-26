@@ -29,6 +29,7 @@ from telethon.sessions import StringSession
 
 from telegram_mcp.client_identity import client_identity_kwargs
 from telegram_mcp.multiuser import db, oauth_provider, principals
+from telegram_mcp.multiuser.client_pool import _proxy_kwargs
 from telegram_mcp.multiuser.oauth_provider import TelegramOAuthProvider
 from telegram_mcp.multiuser.web import csrf, templates
 from telegram_mcp.runtime import mcp
@@ -264,7 +265,9 @@ async def telegram_login_start(request: Request) -> Response:
     phone = str(form.get("phone", "")).strip() or None
 
     _prune_stale_flows()
-    client = TelegramClient(StringSession(), api_id, api_hash, **client_identity_kwargs())
+    client = TelegramClient(
+        StringSession(), api_id, api_hash, **client_identity_kwargs(), **_proxy_kwargs()
+    )
     try:
         await client.connect()
     except Exception as exc:

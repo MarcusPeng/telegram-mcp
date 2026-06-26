@@ -113,6 +113,30 @@ def test_build_proxy_returns_none_when_unset(monkeypatch):
     assert runtime._build_proxy_for_label("default") == (None, None)
 
 
+def test_build_proxy_label_none_ignores_suffixed_override(monkeypatch):
+    """HTTP multi-user mode passes label=None: global proxy only, no per-label override."""
+    _clear_proxy_env(monkeypatch)
+    monkeypatch.setenv("TELEGRAM_PROXY_TYPE_SOMEUSER", "socks5")
+    monkeypatch.setenv("TELEGRAM_PROXY_HOST_SOMEUSER", "proxy.example")
+    monkeypatch.setenv("TELEGRAM_PROXY_PORT_SOMEUSER", "1080")
+    # No unsuffixed TELEGRAM_PROXY_TYPE set -> label=None sees no proxy at all,
+    # even though a suffixed one exists (it would matter for stdio label lookups).
+    assert runtime._build_proxy_for_label(None) == (None, None)
+
+
+def test_build_proxy_label_none_uses_global_config(monkeypatch):
+    _clear_proxy_env(monkeypatch)
+    _stub_python_socks(monkeypatch)
+    monkeypatch.setenv("TELEGRAM_PROXY_TYPE", "socks5")
+    monkeypatch.setenv("TELEGRAM_PROXY_HOST", "127.0.0.1")
+    monkeypatch.setenv("TELEGRAM_PROXY_PORT", "1080")
+
+    proxy, connection = runtime._build_proxy_for_label(None)
+
+    assert proxy == {"proxy_type": "socks5", "addr": "127.0.0.1", "port": 1080, "rdns": True}
+    assert connection is None
+
+
 def _stub_python_socks(monkeypatch):
     """Make ``import python_socks`` succeed without installing the package."""
     import sys

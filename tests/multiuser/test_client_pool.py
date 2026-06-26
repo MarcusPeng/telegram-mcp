@@ -68,3 +68,49 @@ def test_get_pool_reads_idle_timeout_env(monkeypatch):
     monkeypatch.setenv("TELEGRAM_MCP_CLIENT_IDLE_SECONDS", "42")
     pool = client_pool.get_pool()
     assert pool._idle_timeout == 42
+
+
+def _clear_proxy_env(monkeypatch):
+    import os
+
+    for key in list(os.environ):
+        if key.startswith("TELEGRAM_PROXY_"):
+            monkeypatch.delenv(key, raising=False)
+
+
+def test_proxy_kwargs_empty_when_unset(monkeypatch):
+    _clear_proxy_env(monkeypatch)
+    assert client_pool._proxy_kwargs() == {}
+
+
+def test_proxy_kwargs_applied_to_constructed_client(conn, monkeypatch):
+    _clear_proxy_env(monkeypatch)
+    import sys
+    import types
+
+    monkeypatch.setitem(sys.modules, "python_socks", types.ModuleType("python_socks"))
+    monkeypatch.setenv("TELEGRAM_PROXY_TYPE", "socks5")
+    monkeypatch.setenv("TELEGRAM_PROXY_HOST", "proxy.example")
+    monkeypatch.setenv("TELEGRAM_PROXY_PORT", "1080")
+
+    principals.upsert_principal(
+        conn, telegram_user_id=111, api_id=12345, api_hash="abc", session_string="sess", phone=None
+    )
+    pool = client_pool.ClientPool()
+    client = pool.get_or_create(111)
+
+    assert client.kwargs["proxy"] == {
+        "proxy_type": "socks5",
+        "addr": "proxy.example",
+        "port": 1080,
+        "rdns": True,
+    }
+
+
+def test_proxy_kwargs_ignores_per_label_override(monkeypatch):
+    """HTTP mode has no account labels -- a stray _<LABEL> override must not apply."""
+    _clear_proxy_env(monkeypatch)
+    monkeypatch.setenv("TELEGRAM_PROXY_TYPE_WORK", "socks5")
+    monkeypatch.setenv("TELEGRAM_PROXY_HOST_WORK", "proxy.example")
+    monkeypatch.setenv("TELEGRAM_PROXY_PORT_WORK", "1080")
+    assert client_pool._proxy_kwargs() == {}

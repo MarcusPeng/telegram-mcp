@@ -35,7 +35,9 @@ services:
       # Set these in .env (not hardcoded here): TELEGRAM_MCP_PUBLIC_URL,
       # TELEGRAM_MCP_MASTER_KEY (openssl rand -base64 32).
     ports:
-      - "8000:8000"
+      # Reads TELEGRAM_MCP_HTTP_PORT from .env so host and container ports
+      # stay in sync; defaults to 8000 if unset.
+      - "${TELEGRAM_MCP_HTTP_PORT:-8000}:${TELEGRAM_MCP_HTTP_PORT:-8000}"
     volumes:
       # Persists linked Telegram accounts + OAuth state across restarts.
       - ./data:/app/data

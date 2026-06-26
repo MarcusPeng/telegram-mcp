@@ -206,15 +206,18 @@ _PROXY_TYPES_SOCKS_HTTP = {"socks5", "socks4", "http"}
 _PROXY_TYPES_ALL = _PROXY_TYPES_SOCKS_HTTP | {"mtproxy"}
 
 
-def _get_proxy_env(name: str, label: str) -> Optional[str]:
+def _get_proxy_env(name: str, label: Optional[str]) -> Optional[str]:
     """Resolve a TELEGRAM_PROXY_* env var with optional ``_<LABEL>`` suffix.
 
     Per-account values override the unsuffixed defaults so a global proxy can
-    coexist with per-label overrides.
+    coexist with per-label overrides. ``label=None`` skips the suffix lookup
+    entirely and only consults the unsuffixed global var -- used by HTTP
+    multi-user mode, which has no account labels to override per-user.
     """
-    suffixed = os.getenv(f"TELEGRAM_PROXY_{name}_{label.upper()}")
-    if suffixed:
-        return suffixed
+    if label is not None:
+        suffixed = os.getenv(f"TELEGRAM_PROXY_{name}_{label.upper()}")
+        if suffixed:
+            return suffixed
     return os.getenv(f"TELEGRAM_PROXY_{name}") or None
 
 
@@ -224,10 +227,11 @@ def _parse_bool_env(value: Optional[str], default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _build_proxy_for_label(label: str) -> tuple[Optional[Any], Optional[Any]]:
+def _build_proxy_for_label(label: Optional[str] = None) -> tuple[Optional[Any], Optional[Any]]:
     """Return ``(proxy, connection)`` kwargs for ``TelegramClient`` for a label.
 
-    Reads ``TELEGRAM_PROXY_*`` env vars (with optional ``_<LABEL>`` suffix).
+    Reads ``TELEGRAM_PROXY_*`` env vars (with optional ``_<LABEL>`` suffix;
+    pass ``None`` for the global-only vars, as HTTP multi-user mode does).
     Returns ``(None, None)`` when no proxy is configured. Raises
     :class:`ValidationError` for malformed configuration so the server fails
     fast instead of silently bypassing the proxy.
