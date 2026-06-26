@@ -27,9 +27,17 @@ COPY main.py sanitize.py ./
 COPY telegram_mcp ./telegram_mcp
 # COPY session_string_generator.py . # Optional: if needed within the container, otherwise can be run outside
 
-# Create a non-root user and switch to it
-RUN adduser --disabled-password --gecos "" appuser && chown -R appuser:appuser /app
-USER appuser
+# Create a non-root user. su-exec drops privileges to it from the entrypoint
+# below, after fixing ownership of any bind-mounted volume (e.g. HTTP mode's
+# /app/data) -- a static USER directive here can't do that, since a host
+# directory mounted at container start overrides whatever this build-time
+# chown set.
+RUN adduser --disabled-password --gecos "" appuser && chown -R appuser:appuser /app \
+    && apk add --no-cache su-exec
+
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+ENTRYPOINT ["docker-entrypoint.sh"]
 
 # Define environment variables needed by the application
 # These should be provided at runtime, not hardcoded (especially secrets)

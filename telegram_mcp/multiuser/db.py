@@ -79,7 +79,13 @@ def get_connection() -> sqlite3.Connection:
         with _lock:
             if _connection is None:
                 conn = sqlite3.connect(_db_path(), check_same_thread=False)
-                conn.execute("PRAGMA journal_mode=WAL")
+                # Deliberately not WAL: SQLite's own docs advise against WAL
+                # on network filesystems (NFS/CephFS/etc.) due to unreliable
+                # mmap/locking support, and a single-process, single-connection
+                # deployment (see get_pool()'s replicas=1 requirement) doesn't
+                # need WAL's concurrent-reader benefit anyway. The default
+                # rollback-journal mode is slower under heavy concurrency but
+                # safe on any filesystem.
                 conn.row_factory = sqlite3.Row
                 _connection = conn
     return _connection
